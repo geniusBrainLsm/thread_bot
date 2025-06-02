@@ -25,12 +25,12 @@ public class Gpt4Service {
                 .build();
     }
 
-    public Mono<String> generateHaiku() {
+    public Mono<String> generatePost(String prompt) {
         Map<String, Object> requestBody = Map.of(
                 "model", "gpt-4o-mini",
                 "store", true,
                 "messages", List.of(
-                        Map.of("role", "user", "content", "write a haiku about ai")
+                        Map.of("role", "user", "content", prompt)
                 )
         );
 
