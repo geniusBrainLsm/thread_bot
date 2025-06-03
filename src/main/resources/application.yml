@@ -1,2 +1,21 @@
 openai:
-  api-key: ${OPENAI_API_KEY}
+  api-key: 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
+
+meta:
+  app-id: 123456789012345
+  app-secret: abcde12345fghij67890klmnop
+
+threads:
+  access-token: your_threads_access_token_here
+  user-id: your_threads_user_id_here
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/bot
+    username: bot
+    password: 1234
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true

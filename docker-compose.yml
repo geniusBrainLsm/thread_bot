@@ -1,28 +1,18 @@
-version: '3.8'
-
 services:
-  app:
-    build: .
-    container_name: lifetips-bot
-    ports:
-      - "8080:8080"
+  postgres:
+    image: postgres:latest
+    container_name: postgres-container
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/thread-bot
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=1234
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      - db
-
-  db:
-    image: postgres:15
-    container_name: thread-bot-db
-    environment:
-      POSTGRES_DB: thread-bot
-      POSTGRES_USER: postgres
+      POSTGRES_USER: bot
+      # 개발 환경 설정을 편하게 하기 위한 키값.
+      # 운영 환경에서는 개발환경과 같은 키값을 쓰지 않음.
       POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: bot
+    ports:
+      - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
 
 volumes:
-  pgdata:
+  postgres-data:
