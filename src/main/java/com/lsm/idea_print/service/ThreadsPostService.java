@@ -1,6 +1,7 @@
 package com.lsm.idea_print.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.lsm.idea_print.config.ThreadsAccountProperties;
 import com.lsm.idea_print.entity.MetaToken;
 import com.lsm.idea_print.repository.MetaTokenRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,22 +25,22 @@ public class ThreadsPostService {
 
     @Scheduled(cron = "0 0 0 * * *") // 매일 자정
     public void postDailyGptContent() {
-        String prompt = "오늘 하루를 웃음으로 시작하게 할 재미있는 문장을 하나 생성해줘.";
+        metaTokenRepository.findAll().forEach(account -> {
+            String prompt = account.getPrompt();
+            if (prompt == null || prompt.isBlank()) {
+                prompt = "오늘 하루를 웃음으로 시작하게 할 재미있는 문장을 하나 생성해줘.";
+            }
 
         // 예시: 최신 계정 기준으로 게시
-        MetaToken latestAccount = metaTokenRepository.findTopByOrderByIdDesc()
-                .orElseThrow(() -> new IllegalArgumentException("저장된 MetaToken이 없습니다"));
-
-        gpt4Service.generatePost(prompt)
-                .flatMap(text -> postToThreads(text, latestAccount))
-                .doOnSuccess(resp -> System.out.println("✅ Threads에 글 게시 완료: " + resp))
-                .doOnError(error -> System.err.println("❌ 게시 실패: " + error.getMessage()))
-                .block();
+            gpt4Service.generatePost(prompt)
+                    .flatMap(text -> postToThreads(text, account))
+                    .doOnSuccess(resp -> System.out.println("✅ Threads에 글 게시 완료: " + resp))
+                    .doOnError(error -> System.err.println("❌ 게시 실패: " + error.getMessage()))
+                    .block();
+        });
     }
 
-    public Mono<JsonNode> postToThreads(String text, MetaToken account) {
-        String accessToken = account.getAccessToken();
-        String threadsUserId = account.getUserId(); // DB에 저장된 userId 사용
+    public Mono<JsonNode> postToThreads(String text, String threadsUserId, String accessToken) {
         WebClient webClient = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         return webClient.post()

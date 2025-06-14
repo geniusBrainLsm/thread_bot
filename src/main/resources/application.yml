@@ -5,9 +5,9 @@ meta:
   app-id: 123456789012345
   app-secret: abcde12345fghij67890klmnop
 
-threads:
-  access-token: your_threads_access_token_here
-  user-id: your_threads_user_id_here
+accounts:
+  - user-id: your_threads_user_id_here
+    access-token: your_threads_access_token_here
 
 spring:
   datasource:

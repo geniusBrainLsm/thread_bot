@@ -13,10 +13,12 @@ import java.time.LocalDateTime;
 @Entity
 @Setter
 @Getter
-@Table(name = "mate_token")
+@Table(name = "mata_token")
 public class MetaToken {
     @Id
     private Long id;
     private String userId;
     private String accessToken;
+    private String prompt;
+
 }

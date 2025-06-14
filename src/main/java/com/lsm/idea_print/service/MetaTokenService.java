@@ -30,7 +30,7 @@ public class MetaTokenService {
                 .build();
     }
 
-    public Mono<MetaToken> refreshToken(String accessToken) {
+    public Mono<MetaToken> refreshToken(String accessToken, String prompt) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/oauth/access_token")
@@ -46,6 +46,7 @@ public class MetaTokenService {
                     MetaToken token = new MetaToken();
                     token.setAccessToken(response.getAccessToken());
                     token.setUserId(response.getUserId());
+                    token.setPrompt(prompt);
                     return metaTokenRepository.save(token);
                 });
     }
