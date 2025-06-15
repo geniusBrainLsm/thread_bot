@@ -33,7 +33,9 @@ public class ThreadsPostService {
 
         // 예시: 최신 계정 기준으로 게시
             gpt4Service.generatePost(prompt)
-                    .flatMap(text -> postToThreads(text, account))
+                    .flatMap(text -> postToThreads(text,
+                            account.getUserId(),
+                            account.getAccessToken()))
                     .doOnSuccess(resp -> System.out.println("✅ Threads에 글 게시 완료: " + resp))
                     .doOnError(error -> System.err.println("❌ 게시 실패: " + error.getMessage()))
                     .block();

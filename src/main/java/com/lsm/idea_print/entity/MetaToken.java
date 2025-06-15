@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @Entity
 @Setter
 @Getter
-@Table(name = "mata_token")
+@Table(name = "meta_token")
 public class MetaToken {
     @Id
     private Long id;

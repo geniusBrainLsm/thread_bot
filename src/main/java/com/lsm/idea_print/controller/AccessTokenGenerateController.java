@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
 @RestController
 @RequiredArgsConstructor
@@ -16,8 +17,8 @@ public class AccessTokenGenerateController {
     private final MetaTokenService metaTokenService;
 
     @PostMapping("/manual-save")
-    public ResponseEntity<String> saveManually(@RequestBody SaveAccessTokenRequest request) {
-        metaTokenService.refreshToken(request.getAccessToken(), request.getPrompt());
-        return ResponseEntity.ok("저장 완료");
+    public Mono<ResponseEntity<String>> saveManually(@RequestBody SaveAccessTokenRequest request) {
+        return metaTokenService.refreshToken(request.getAccessToken(), request.getPrompt())
+                .map(token -> ResponseEntity.ok("저장 완료"));
     }
 }
