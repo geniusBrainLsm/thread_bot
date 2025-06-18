@@ -4,15 +4,12 @@ import com.lsm.idea_print.dto.request.SaveAccessTokenRequest;
 import com.lsm.idea_print.service.MetaTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api")
+@RequestMapping("/api/token")
 public class AccessTokenGenerateController {
     private final MetaTokenService metaTokenService;
 
@@ -20,5 +17,15 @@ public class AccessTokenGenerateController {
     public Mono<ResponseEntity<String>> saveManually(@RequestBody SaveAccessTokenRequest request) {
         return metaTokenService.refreshToken(request.getAccessToken(), request.getPrompt())
                 .map(token -> ResponseEntity.ok("저장 완료"));
+    }
+
+    @PostMapping("/save_account")
+    public ResponseEntity<Long> saveAccount(@RequestBody SaveAccessTokenRequest request) {
+        return ResponseEntity.ok(metaTokenService.saveAccount(request));
+    }
+
+    @PatchMapping("/save_account/{id}")
+    public ResponseEntity<Long> updateAccount(@PathVariable Long id, @RequestBody SaveAccessTokenRequest request){
+        return ResponseEntity.ok(metaTokenService.updateAccount(id, request));
     }
 }

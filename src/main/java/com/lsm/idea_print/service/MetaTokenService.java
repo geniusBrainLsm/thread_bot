@@ -1,5 +1,6 @@
 package com.lsm.idea_print.service;
 
+import com.lsm.idea_print.dto.request.SaveAccessTokenRequest;
 import com.lsm.idea_print.dto.response.MetaTokenResponse;
 import com.lsm.idea_print.entity.MetaToken;
 import com.lsm.idea_print.repository.MetaTokenRepository;
@@ -51,5 +52,27 @@ public class MetaTokenService {
                 });
     }
 
+    public Long saveAccount(SaveAccessTokenRequest request){
+        MetaToken metaToken = MetaToken.builder()
+                .accessToken(request.getAccessToken())
+                .prompt(request.getPrompt())
+                .userId(request.getUserId())
+                .build();
+        metaTokenRepository.save(metaToken);
+        return metaToken.getId();
+    }
 
+    public Long updateAccount(Long id, SaveAccessTokenRequest request) {
+        MetaToken existing = metaTokenRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("아이디 없음"));
+
+        MetaToken updated = existing.toBuilder()
+                .accessToken(request.getAccessToken())
+                .prompt(request.getPrompt())
+                .userId(request.getUserId())
+                .build();
+
+        metaTokenRepository.save(updated);
+        return updated.getId();
+    }
 }

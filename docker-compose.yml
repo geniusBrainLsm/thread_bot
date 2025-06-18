@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:latest
-    container_name: postgres-container
+    container_name: postgres-container2
     environment:
       POSTGRES_USER: bot
       # 개발 환경 설정을 편하게 하기 위한 키값.
@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: 1234
       POSTGRES_DB: bot
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
