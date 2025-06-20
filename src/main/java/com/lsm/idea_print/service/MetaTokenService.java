@@ -30,7 +30,7 @@ public class MetaTokenService {
                 .baseUrl("https://threads.net")
                 .build();
     }
-
+    //TOdo: 이거 작동 되도록, 그리고 토큰만료로 인한 에러 시 이거 실행되도록
     public Mono<MetaToken> refreshToken(String accessToken, String prompt) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -46,8 +46,6 @@ public class MetaTokenService {
                 .map(response -> {
                     MetaToken token = new MetaToken();
                     token.setAccessToken(response.getAccessToken());
-                    token.setUserId(response.getUserId());
-                    token.setPrompt(prompt);
                     return metaTokenRepository.save(token);
                 });
     }

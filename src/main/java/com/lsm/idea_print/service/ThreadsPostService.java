@@ -66,15 +66,6 @@ public class ThreadsPostService {
                 .map(results -> ApiResponse.success("모든 계정에 게시 완료", results));
     }
 
-    @Scheduled(cron = "0 0 0 * * *") // 매일 자정
-    public void postDailyGptContent() {
-        postDailyContentForAllAccounts()
-                .doOnNext(response -> {
-                    long successCount = response.getData().stream().filter(PostResultResponse::isSuccess).count();
-                    System.out.println("\u2705 스케줄 완료 - 성공: " + successCount + " / 전체: " + response.getData().size());
-                })
-                .subscribe();
-    }
 
     private Flux<String> splitTextByLimit(String text, int limit) {
         List<String> result = new ArrayList<>();

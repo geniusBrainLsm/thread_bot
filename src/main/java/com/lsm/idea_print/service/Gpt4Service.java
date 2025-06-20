@@ -26,7 +26,7 @@ public class Gpt4Service {
 
     public Mono<String> generatePost(String prompt) {
         Map<String, Object> requestBody = Map.of(
-                "model", "gpt-4o-mini",
+                "model", "gpt-4.1",
                 "store", true,
                 "messages", List.of(
                         Map.of("role", "user", "content", prompt)

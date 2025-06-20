@@ -24,22 +24,9 @@ public class SeuhariService {
     private final String THREADS_API_BASE_URL = "https://graph.threads.net/v1.0";
 
 
-    @Scheduled(cron = "0 0 15 * * *") // 매일 오후 3시
-    public void performDailyShariForCommenters() {
-        List<MetaToken> accounts = metaTokenRepository.findAll();
-
-        Flux.fromIterable(accounts)
-                .flatMap(account -> performShariForAccount(account.getUserId(), account.getAccessToken()))
-                .collectList()
-                .doOnNext(results -> {
-                    long successCount = results.stream().filter(result -> result.contains("성공")).count();
-                    System.out.println("\u2705 스하리 스케줄 완료 - 성공: " + successCount + " / 전체: " + results.size());
-                })
-                .subscribe();
-    }
 
     // 특정 계정의 댓글 작성자들에게 스하리 수행
-    private Mono<String> performShariForAccount(String userId, String accessToken) {
+    public Mono<String> performShariForAccount(String userId, String accessToken) {
         return getRecentPostsWithComments(userId, accessToken)
                 .flatMapMany(posts -> Flux.fromIterable(posts))
                 .flatMap(post -> getPostComments(post.path("id").asText(), accessToken))
@@ -60,7 +47,7 @@ public class SeuhariService {
                 });
     }
     // 최근 게시글들과 댓글 가져오기
-    private Mono<List<JsonNode>> getRecentPostsWithComments(String userId, String accessToken) {
+    public Mono<List<JsonNode>> getRecentPostsWithComments(String userId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         return client.get()
@@ -83,7 +70,7 @@ public class SeuhariService {
     }
 
     // 특정 게시글의 댓글 가져오기
-    private Mono<List<JsonNode>> getPostComments(String postId, String accessToken) {
+    public Mono<List<JsonNode>> getPostComments(String postId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         return client.get()
@@ -108,7 +95,7 @@ public class SeuhariService {
     }
 
     // 스하리 수행 (팔로우 + 좋아요 + 리포스트)
-    private Mono<Boolean> performShariActions(String targetUserId, String accessToken) {
+    public Mono<Boolean> performShariActions(String targetUserId, String accessToken) {
         return followUser(targetUserId, accessToken)
                 .then(likeUserRecentPost(targetUserId, accessToken))
                 .then(repostUserRecentPost(targetUserId, accessToken))
@@ -219,20 +206,22 @@ public class SeuhariService {
     }
 
     //맨위게시글 답글 생성 (20개까지만 답글)
-    private Mono<String> autoReplyToComments(String userId, String accessToken) {
+    public Mono<String> autoReplyToComments(String userId, String accessToken) {
         return getRecentPostsWithComments(userId, accessToken)
                 .flatMapMany(posts -> Flux.fromIterable(posts))
                 .flatMap(post -> {
                     String postId = post.path("id").asText();
+                    String postText = post.path("message").asText(); // 수정: path() -> path("message")
+
                     return getPostComments(postId, accessToken)
                             .flatMapMany(comments -> Flux.fromIterable(comments))
                             .filter(comment -> !comment.path("from").path("id").asText().equals(userId)) // 내 댓글 제외
                             .flatMap(comment -> {
                                 String commentId = comment.path("id").asText();
-                                String commenterName = comment.path("from").path("username").asText();
+                                String commentText = comment.path("message").asText(); // 댓글 내용 추가
 
-                                // 15자 이내 랜덤 답글 생성
-                                return generateShortReply(commenterName)
+                                // 15자 이내 랜덤 답글 생성 - 수정된 부분
+                                return generateShortReply(postText, commentText)
                                         .flatMap(replyText -> replyToComment(commentId, replyText, userId, accessToken));
                             });
                 })
@@ -249,9 +238,8 @@ public class SeuhariService {
     }
 
     //답글생성
-    private Mono<String> generateShortReply(String commenterName) {
-
-        String prompt = commenterName + "님이 댓글을 달아주셨어요. 15자 이내로 감사 인사 답글을 만들어주세요.";
+    private Mono<String> generateShortReply(String post, String comment) {
+        String prompt = post + "<< 글에" + comment + "라고 댓글이 달렸는데 여기에 15자 이내로 답글 달아줘";
         return gpt4Service.generatePost(prompt)
                 .map(text -> text.length() > 15 ? text.substring(0, 15) : text);
     }
