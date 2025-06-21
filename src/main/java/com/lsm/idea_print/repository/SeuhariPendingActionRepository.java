@@ -9,7 +9,6 @@ import java.util.List;
 
 @Repository
 public interface SeuhariPendingActionRepository extends JpaRepository<SeuhariPendingAction, Long> {
-    List<SeuhariPendingAction> findByStatusOrderByCreatedAtDesc(String status);
-    List<SeuhariPendingAction> findByUserIdAndStatus(String userId, String status);
+    List<SeuhariPendingAction> findByStatusOrderByCreatedAtDesc(SeuhariPendingAction.Status status);
     long countByUserIdAndStatusAndCreatedAtAfter(String userId, SeuhariPendingAction.Status status, LocalDateTime after);
 }

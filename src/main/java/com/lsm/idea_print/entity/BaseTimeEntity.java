@@ -26,8 +26,4 @@ public abstract class BaseTimeEntity {
     @Column
     private LocalDateTime updatedAt;
 
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
 }

@@ -24,6 +24,7 @@ public class SeuhariService {
     private final MetaTokenRepository metaTokenRepository;
     private final Gpt4Service gpt4Service;
     private final WebClient.Builder webClientBuilder;
+    private final SeuhariApprovalService seuhariApprovalService;
     private final String THREADS_API_BASE_URL = "https://graph.threads.net/v1.0";
 
     public List<Long> performDailyShariForCommenters() {
@@ -233,39 +234,6 @@ public class SeuhariService {
                 });
     }
 
-    // 맨위게시글 답글 생성 (20개까지만 답글) - 딜레이 추가
-    public Mono<String> autoReplyToComments(String userId, String accessToken) {
-        return getRecentPostsWithComments(userId, accessToken)
-                .flatMapMany(posts -> Flux.fromIterable(posts))
-                .delayElements(Duration.ofSeconds(2)) // 게시글 간 딜레이
-                .flatMap(post -> {
-                    String postId = post.path("id").asText();
-                    String postText = post.path("text").asText(); // message -> text로 수정
-
-                    return getPostCommentsWithRetry(postId, accessToken)
-                            .flatMapMany(comments -> Flux.fromIterable(comments))
-                            .filter(comment -> !comment.path("from").path("id").asText().equals(userId))
-                            .take(5) // 댓글 수 제한 (부하 감소)
-                            .delayElements(Duration.ofSeconds(3)) // 답글 간 딜레이
-                            .flatMap(comment -> {
-                                String commentId = comment.path("id").asText();
-                                String commentText = comment.path("text").asText(); // message -> text로 수정
-
-                                return generateShortReply(postText, commentText)
-                                        .flatMap(replyText -> replyToComment(commentId, replyText, userId, accessToken));
-                            });
-                })
-                .collectList()
-                .map(results -> {
-                    long successCount = results.stream().filter(Boolean::booleanValue).count();
-                    return userId + " 계정 자동 답글 완료: " + successCount + "개 성공";
-                })
-                .onErrorResume(error -> {
-                    String message = userId + " 계정 자동 답글 실패: " + error.getMessage();
-                    System.err.println("❌ " + message);
-                    return Mono.just(message);
-                });
-    }
 
     // 답글생성
     private Mono<String> generateShortReply(String post, String comment) {
@@ -321,18 +289,65 @@ public class SeuhariService {
                 });
     }
 
-    @Scheduled(cron = "0 0 16 * * *") // 매일 오후 4시 자동답변
-    public void performDailyAutoReply() {
-        List<MetaToken> accounts = metaTokenRepository.findAll();
 
-        Flux.fromIterable(accounts)
-                .delayElements(Duration.ofSeconds(10)) // 계정 간 10초 딜레이
-                .flatMap(account -> autoReplyToComments(account.getUserId(), account.getAccessToken()))
-                .collectList()
-                .doOnNext(results -> {
-                    long successCount = results.stream().filter(result -> result.contains("성공")).count();
-                    System.out.println("✅ 자동 답글 스케줄 완료 - 성공: " + successCount + " / 전체: " + results.size());
+
+
+    // 기존 즉시 실행 메서드들을 승인 대기로 변경
+    public Mono<String> performShariForAccountWithApproval(String userId, String accessToken) {
+        return getRecentPostsWithComments(userId, accessToken)
+                .flatMapMany(posts -> Flux.fromIterable(posts))
+                .delayElements(Duration.ofSeconds(2))
+                .flatMap(post -> getPostCommentsWithRetry(post.path("id").asText(), accessToken))
+                .flatMap(comments -> Flux.fromIterable(comments))
+                .map(comment -> comment.path("from").path("id").asText())
+                .distinct()
+                .filter(commenterId -> !commenterId.equals(userId))
+                .doOnNext(commenterId -> {
+                    // 즉시 실행 대신 승인 대기에 추가
+                    try {
+                        seuhariApprovalService.createPendingAction(userId, commenterId, "FOLLOW", null, null);
+                        seuhariApprovalService.createPendingAction(userId, commenterId, "LIKE", null, null);
+                        seuhariApprovalService.createPendingAction(userId, commenterId, "REPOST", null, null);
+                    } catch (Exception e) {
+                        System.err.println("승인 대기 액션 생성 실패: " + e.getMessage());
+                    }
                 })
-                .subscribe();
+                .count()
+                .map(count -> userId + " 계정: " + count + "명의 스하리 액션이 승인 대기에 추가됨")
+                .onErrorResume(error -> Mono.just(userId + " 승인 대기 추가 실패: " + error.getMessage()));
+    }
+
+    // 자동 답글도 승인 시스템으로 변경
+    public Mono<String> autoReplyToCommentsWithApproval(String userId, String accessToken) {
+        return getRecentPostsWithComments(userId, accessToken)
+                .flatMapMany(posts -> Flux.fromIterable(posts))
+                .delayElements(Duration.ofSeconds(2))
+                .flatMap(post -> {
+                    String postId = post.path("id").asText();
+                    String postText = post.path("text").asText();
+
+                    return getPostCommentsWithRetry(postId, accessToken)
+                            .flatMapMany(comments -> Flux.fromIterable(comments))
+                            .filter(comment -> !comment.path("from").path("id").asText().equals(userId))
+                            .take(5)
+                            .flatMap(comment -> {
+                                String commentId = comment.path("id").asText();
+                                String commentText = comment.path("text").asText();
+
+                                return generateShortReply(postText, commentText)
+                                        .doOnNext(replyText -> {
+                                            // 즉시 답글 대신 승인 대기에 추가
+                                            seuhariApprovalService.createPendingAction(
+                                                    userId,
+                                                    comment.path("from").path("id").asText(),
+                                                    "REPLY",
+                                                    commentId,
+                                                    replyText
+                                            );
+                                        });
+                            });
+                })
+                .count()
+                .map(count -> userId + " 계정: " + count + "개의 답글이 승인 대기에 추가됨");
     }
 }
