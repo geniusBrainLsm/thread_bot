@@ -7,7 +7,9 @@ import com.lsm.idea_print.entity.SeuhariPendingAction;
 import com.lsm.idea_print.repository.MetaTokenRepository;
 import com.lsm.idea_print.repository.SeuhariPendingActionRepository;
 import lombok.RequiredArgsConstructor;
+import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
@@ -24,6 +26,8 @@ public class SeuhariApprovalService {
     private final SeuhariActionExecutor actionExecutor;
     private final MetaTokenRepository metaTokenRepository;
     private final ThreadsPostService threadsPostService;
+    private final SeuhariService seuhariService;
+
     // 승인 대기 액션 생성 (기존 즉시 실행 대신)
     public Mono<Void> createPendingAction(String userId, String targetUserId, String actionType,
                                           String postId, String content) {
@@ -102,7 +106,60 @@ public class SeuhariApprovalService {
 
         return request.getIds();
     }
+    // 기존 즉시 실행 메서드들을 승인 대기로 변경
+    public Mono<String> performShariForAccountWithApproval(String userId, String accessToken) {
+        return seuhariService.getRecentPostsWithComments(userId, accessToken)
+                .flatMapMany(posts -> Flux.fromIterable(posts))
+                .delayElements(Duration.ofSeconds(2))
+                .flatMap(post -> seuhariService.getPostCommentsWithRetry(post.path("id").asText(), accessToken))
+                .flatMap(comments -> Flux.fromIterable(comments))
+                .map(comment -> comment.path("from").path("id").asText())
+                .distinct()
+                .filter(commenterId -> !commenterId.equals(userId))
+                .doOnNext(commenterId -> {
+                    try {
+                        createPendingAction(userId, commenterId, "FOLLOW", null, null);
+                        createPendingAction(userId, commenterId, "LIKE", null, null);
+                        createPendingAction(userId, commenterId, "REPOST", null, null);
+                    } catch (Exception e) {
+                        System.err.println("승인 대기 액션 생성 실패: " + e.getMessage());
+                    }
+                })
+                .count()
+                .map(count -> userId + " 계정: " + count + "명의 스하리 액션이 승인 대기에 추가됨")
+                .onErrorResume(error -> Mono.just(userId + " 승인 대기 추가 실패: " + error.getMessage()));
+    }
 
+    // 자동 답글도 승인 시스템으로 변경
+    public Mono<String> autoReplyToCommentsWithApproval(String userId, String accessToken) {
+        return seuhariService.getRecentPostsWithComments(userId, accessToken)
+                .flatMapMany(posts -> Flux.fromIterable(posts))
+                .delayElements(Duration.ofSeconds(2))
+                .flatMap(post -> {
+                    String postId = post.path("id").asText();
+                    String postText = post.path("text").asText();
+
+                    return seuhariService.getPostCommentsWithRetry(postId, accessToken)
+                            .flatMapMany(comments -> Flux.fromIterable(comments))
+                            .filter(comment -> !comment.path("from").path("id").asText().equals(userId))
+                            .take(5)
+                            .flatMap(comment -> {
+                                String commentId = comment.path("id").asText();
+                                String commentText = comment.path("text").asText();
+
+                                return seuhariService.generateShortReply(postText, commentText)
+                                        .doOnNext(replyText -> createPendingAction(
+                                                userId,
+                                                comment.path("from").path("id").asText(),
+                                                "REPLY",
+                                                commentId,
+                                                replyText
+                                        ));
+                            });
+                })
+                .count()
+                .map(count -> userId + " 계정: " + count + "개의 답글이 승인 대기에 추가됨");
+    }
     // 실제 액션 실행
 
 
