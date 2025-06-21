@@ -10,30 +10,48 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class SeuhariService {
-    private MetaTokenRepository metaTokenRepository;
+    private final MetaTokenRepository metaTokenRepository;
     private final Gpt4Service gpt4Service;
     private final WebClient.Builder webClientBuilder;
     private final String THREADS_API_BASE_URL = "https://graph.threads.net/v1.0";
 
+    public List<Long> performDailyShariForCommenters() {
+        List<MetaToken> accounts = metaTokenRepository.findAll();
 
+        Flux.fromIterable(accounts)
+                .delayElements(Duration.ofSeconds(5)) // 계정 간 5초 딜레이
+                .flatMap(account -> performShariForAccount(account.getUserId(), account.getAccessToken()))
+                .collectList()
+                .doOnNext(results -> {
+                    long successCount = results.stream().filter(result -> result.contains("성공")).count();
+                    System.out.println("✅ 스하리 스케줄 완료 - 성공: " + successCount + " / 전체: " + results.size());
+                })
+                .subscribe();
+        return accounts.stream().map(MetaToken::getId).toList();
+    }
 
-    // 특정 계정의 댓글 작성자들에게 스하리 수행
+    // 핵심 개선: Rate Limiting과 Retry Logic 적용
     public Mono<String> performShariForAccount(String userId, String accessToken) {
         return getRecentPostsWithComments(userId, accessToken)
                 .flatMapMany(posts -> Flux.fromIterable(posts))
-                .flatMap(post -> getPostComments(post.path("id").asText(), accessToken))
+                .delayElements(Duration.ofSeconds(2)) // 게시글 간 2초 딜레이
+                .flatMap(post -> getPostCommentsWithRetry(post.path("id").asText(), accessToken))
                 .flatMap(comments -> Flux.fromIterable(comments))
                 .map(comment -> comment.path("from").path("id").asText())
-                .distinct() // 중복 사용자 제거
-                .filter(commenterId -> !commenterId.equals(userId)) // 자기 자신 제외
+                .distinct()
+                .filter(commenterId -> !commenterId.equals(userId))
+                .delayElements(Duration.ofSeconds(3)) // 스하리 액션 간 3초 딜레이
                 .flatMap(commenterId -> performShariActions(commenterId, accessToken))
                 .collectList()
                 .map(results -> {
@@ -42,10 +60,11 @@ public class SeuhariService {
                 })
                 .onErrorResume(error -> {
                     String message = userId + " 계정 스하리 실패: " + error.getMessage();
-                    System.err.println("\u274C " + message);
+                    System.err.println("❌ " + message);
                     return Mono.just(message);
                 });
     }
+
     // 최근 게시글들과 댓글 가져오기
     public Mono<List<JsonNode>> getRecentPostsWithComments(String userId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
@@ -54,7 +73,7 @@ public class SeuhariService {
                 .uri(uriBuilder -> uriBuilder
                         .path("/" + userId + "/threads")
                         .queryParam("fields", "id,text,timestamp")
-                        .queryParam("limit", "5") // 최근 20개 게시글
+                        .queryParam("limit", "3") // 5개에서 3개로 줄여서 API 부하 감소
                         .queryParam("access_token", accessToken)
                         .build())
                 .retrieve()
@@ -69,18 +88,25 @@ public class SeuhariService {
                 .doOnNext(posts -> System.out.println("✅ " + userId + "의 최근 게시글 " + posts.size() + "개 조회"));
     }
 
-    // 특정 게시글의 댓글 가져오기
-    public Mono<List<JsonNode>> getPostComments(String postId, String accessToken) {
+    // 핵심 개선: Retry Logic과 더 나은 에러 처리
+    public Mono<List<JsonNode>> getPostCommentsWithRetry(String postId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         return client.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/" + postId + "/comments")
-                        .queryParam("fields", "id,text,from{id,username}")
                         .queryParam("access_token", accessToken)
                         .build())
                 .retrieve()
+                .onStatus(
+                        status -> status.is5xxServerError(),
+                        response -> {
+                            System.err.println("서버 오류 발생 (게시글 ID: " + postId + "), 재시도 예정...");
+                            return Mono.error(new RuntimeException("Server error: " + response.statusCode()));
+                        }
+                )
                 .bodyToMono(JsonNode.class)
+                .retryWhen(Retry.fixedDelay(2, Duration.ofSeconds(3))) // 3초 간격으로 2번 재시도
                 .map(response -> {
                     List<JsonNode> comments = new ArrayList<>();
                     if (response.has("data")) {
@@ -89,15 +115,17 @@ public class SeuhariService {
                     return comments;
                 })
                 .onErrorResume(error -> {
-                    System.err.println("댓글 조회 실패 (게시글 ID: " + postId + "): " + error.getMessage());
+                    System.err.println("댓글 조회 최종 실패 (게시글 ID: " + postId + "): " + error.getMessage());
                     return Mono.just(new ArrayList<>());
                 });
     }
 
-    // 스하리 수행 (팔로우 + 좋아요 + 리포스트)
+    // 스하리 수행 (팔로우 + 좋아요 + 리포스트) - 딜레이 추가
     public Mono<Boolean> performShariActions(String targetUserId, String accessToken) {
         return followUser(targetUserId, accessToken)
+                .delayElement(Duration.ofSeconds(1)) // 액션 간 1초 딜레이
                 .then(likeUserRecentPost(targetUserId, accessToken))
+                .delayElement(Duration.ofSeconds(1))
                 .then(repostUserRecentPost(targetUserId, accessToken))
                 .map(result -> true)
                 .doOnNext(success -> System.out.println("✅ " + targetUserId + "에게 스하리 완료"))
@@ -108,7 +136,7 @@ public class SeuhariService {
     }
 
     // 사용자 팔로우
-    private Mono<Void> followUser(String targetUserId, String accessToken) {
+    Mono<Void> followUser(String targetUserId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         return client.post()
@@ -124,7 +152,7 @@ public class SeuhariService {
     }
 
     // 사용자의 최근 게시글에 좋아요
-    private Mono<Void> likeUserRecentPost(String targetUserId, String accessToken) {
+    Mono<Void> likeUserRecentPost(String targetUserId, String accessToken) {
         return getUserRecentPost(targetUserId, accessToken)
                 .flatMap(postId -> {
                     if (postId.isEmpty()) {
@@ -144,7 +172,7 @@ public class SeuhariService {
     }
 
     // 사용자의 최근 게시글 리포스트
-    private Mono<Void> repostUserRecentPost(String targetUserId, String accessToken) {
+    Mono<Void> repostUserRecentPost(String targetUserId, String accessToken) {
         return getUserRecentPost(targetUserId, accessToken)
                 .flatMap(postId -> {
                     if (postId.isEmpty()) {
@@ -205,22 +233,24 @@ public class SeuhariService {
                 });
     }
 
-    //맨위게시글 답글 생성 (20개까지만 답글)
+    // 맨위게시글 답글 생성 (20개까지만 답글) - 딜레이 추가
     public Mono<String> autoReplyToComments(String userId, String accessToken) {
         return getRecentPostsWithComments(userId, accessToken)
                 .flatMapMany(posts -> Flux.fromIterable(posts))
+                .delayElements(Duration.ofSeconds(2)) // 게시글 간 딜레이
                 .flatMap(post -> {
                     String postId = post.path("id").asText();
-                    String postText = post.path("message").asText(); // 수정: path() -> path("message")
+                    String postText = post.path("text").asText(); // message -> text로 수정
 
-                    return getPostComments(postId, accessToken)
+                    return getPostCommentsWithRetry(postId, accessToken)
                             .flatMapMany(comments -> Flux.fromIterable(comments))
-                            .filter(comment -> !comment.path("from").path("id").asText().equals(userId)) // 내 댓글 제외
+                            .filter(comment -> !comment.path("from").path("id").asText().equals(userId))
+                            .take(5) // 댓글 수 제한 (부하 감소)
+                            .delayElements(Duration.ofSeconds(3)) // 답글 간 딜레이
                             .flatMap(comment -> {
                                 String commentId = comment.path("id").asText();
-                                String commentText = comment.path("message").asText(); // 댓글 내용 추가
+                                String commentText = comment.path("text").asText(); // message -> text로 수정
 
-                                // 15자 이내 랜덤 답글 생성 - 수정된 부분
                                 return generateShortReply(postText, commentText)
                                         .flatMap(replyText -> replyToComment(commentId, replyText, userId, accessToken));
                             });
@@ -237,21 +267,21 @@ public class SeuhariService {
                 });
     }
 
-    //답글생성
+    // 답글생성
     private Mono<String> generateShortReply(String post, String comment) {
         String prompt = post + "<< 글에" + comment + "라고 댓글이 달렸는데 여기에 15자 이내로 답글 달아줘";
         return gpt4Service.generatePost(prompt)
                 .map(text -> text.length() > 15 ? text.substring(0, 15) : text);
     }
 
-    //답글달기
-    private Mono<Boolean> replyToComment(String commentId, String replyText, String userId, String accessToken) {
+    // 답글달기
+    Mono<Boolean> replyToComment(String commentId, String replyText, String userId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         Map<String, Object> body = new HashMap<>();
         body.put("media_type", "TEXT");
         body.put("text", replyText);
-        body.put("reply_to_id", commentId); // 댓글에 대한 답글
+        body.put("reply_to_id", commentId);
 
         return client.post()
                 .uri(uriBuilder -> uriBuilder
@@ -273,7 +303,6 @@ public class SeuhariService {
                 .flatMap(container -> {
                     String creationId = container.path("id").asText();
 
-                    // 답글 발행
                     return client.post()
                             .uri(uriBuilder -> uriBuilder
                                     .path("/" + userId + "/threads_publish")
@@ -297,6 +326,7 @@ public class SeuhariService {
         List<MetaToken> accounts = metaTokenRepository.findAll();
 
         Flux.fromIterable(accounts)
+                .delayElements(Duration.ofSeconds(10)) // 계정 간 10초 딜레이
                 .flatMap(account -> autoReplyToComments(account.getUserId(), account.getAccessToken()))
                 .collectList()
                 .doOnNext(results -> {

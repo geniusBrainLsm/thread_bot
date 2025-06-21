@@ -130,12 +130,4 @@ public class ThreadsPostService {
                     System.out.println("✅ 사용자 정보: " + response.toPrettyString());
                 });
     }
-
-
-
-
-
-
-
-
 }

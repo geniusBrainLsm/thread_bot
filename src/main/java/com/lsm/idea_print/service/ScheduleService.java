@@ -16,21 +16,14 @@ public class ScheduleService {
     private final ThreadsPostService threadsPostService;
     private final MetaTokenRepository metaTokenRepository;
     private final SeuhariService seuhariService;
-    @Scheduled(cron = "0 0 */6 * * *") // 매일 6시간마다 실행
-    public void performDailyShariForCommenters() {
-        List<MetaToken> accounts = metaTokenRepository.findAll();
 
-        Flux.fromIterable(accounts)
-                .flatMap(account -> seuhariService.performShariForAccount(account.getUserId(), account.getAccessToken()))
-                .collectList()
-                .doOnNext(results -> {
-                    long successCount = results.stream().filter(result -> result.contains("성공")).count();
-                    System.out.println("\u2705 스하리 스케줄 완료 - 성공: " + successCount + " / 전체: " + results.size());
-                })
-                .subscribe();
+    @Scheduled(cron = "0 0 */6 * * *") // 매일 6시간마다 실행
+    private void ScheduleAt6(){
+        seuhariService.performDailyShariForCommenters();
     }
 
-    @Scheduled(cron = "0 0 */6 * * *") // 매일 6시간마다 실행
+
+    @Scheduled(cron = "0 0 */7 * * *") // 매일 7시간마다 실행
     public void performDailyAutoReply() {
         List<MetaToken> accounts = metaTokenRepository.findAll();
 
