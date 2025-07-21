@@ -16,7 +16,7 @@ public class Gpt4Service {
 
     private final WebClient webClient;
 
-    public Gpt4Service(WebClient.Builder builder, @Value("${openai.api-key}") String apiKey) {
+    public Gpt4Service(WebClient.Builder builder, @Value("${spring.ai.openai.api-key}") String apiKey) {
         this.webClient = builder
                 .baseUrl("https://api.openai.com/v1")
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)

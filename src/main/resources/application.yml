@@ -1,9 +1,10 @@
-openai:
-  api-key: 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
-
 meta:
   app-id: 123456789012345
   app-secret: abcde12345fghij67890klmnop
+
+mcp:
+  slack:
+    webhook-url: ${SLACK_WEBHOOK_URL:}
 
 #threads:
 #  accounts:
@@ -11,6 +12,13 @@ meta:
 #      access-token: your_threads_access_token_here
 
 spring:
+  ai:
+    openai:
+      api-key: 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
+      chat:
+        options:
+          model: gpt-4-turbo-preview
+          temperature: 0.7
 
   datasource:
     driver-class-name: org.postgresql.Driver
@@ -21,3 +29,14 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+  
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0

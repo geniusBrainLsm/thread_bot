@@ -21,8 +21,19 @@ public class MetaToken extends BaseTimeEntity{
     private String userId;
 
     private String accessToken;
+//
+//    @Column(columnDefinition = "TEXT")
+//    private String prompt;
 
-    private String prompt;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "content_topic_id")
+    private ContentTopic contentTopic;
+    
+    @Column(name = "account_name")
+    private String accountName;
+    
+    @Column(name = "account_description")
+    private String accountDescription;
 
     // 게시글 카운트 필드 추가 (기본값 0)
     @Builder.Default
