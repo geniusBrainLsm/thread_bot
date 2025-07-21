@@ -133,8 +133,6 @@ public class ThreadsPostService {
     }
 
 
-
-
     public boolean postToAllAccounts(String content) {
         try {
             List<MetaToken> accounts = metaTokenRepository.findAll();

@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Table(name = "meta_token")
-public class MetaToken {
+public class MetaToken extends BaseTimeEntity{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -39,22 +39,6 @@ public class MetaToken {
     @Builder.Default
     @Column(name = "post_count", nullable = false)
     private Integer postCount = 0;
-
-    // 생성일시
-    @Builder.Default
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    // 수정일시
-    @Builder.Default
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
-
-    // 업데이트 시 자동으로 수정일시 갱신
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
 
     // 게시글 카운트 증가 메서드
     public void incrementPostCount() {

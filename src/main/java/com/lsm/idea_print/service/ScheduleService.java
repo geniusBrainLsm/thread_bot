@@ -57,6 +57,7 @@ public class ScheduleService {
     // }
 
     @Scheduled(cron = "0 0 */3 * * *") // 매일 3시간마다 실행 (0시, 3시, 6시) - Legacy posting
+
     public void postDailyGptContent() {
         threadsPostService.postDailyContentForAllAccounts()
                 .doOnNext(response -> {
