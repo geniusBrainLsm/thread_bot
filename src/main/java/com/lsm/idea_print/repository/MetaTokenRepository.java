@@ -1,6 +1,7 @@
 package com.lsm.idea_print.repository;
 
 import com.lsm.idea_print.entity.MetaToken;
+import com.lsm.idea_print.entity.ContentTopic;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -41,4 +42,20 @@ public interface MetaTokenRepository extends JpaRepository<MetaToken, Long> {
      * userId 존재 여부 확인
      */
     boolean existsByUserId(String userId);
+    
+    /**
+     * 특정 토픽의 계정들 조회
+     */
+    List<MetaToken> findByContentTopic(ContentTopic contentTopic);
+    
+    /**
+     * 토픽명으로 계정들 조회
+     */
+    List<MetaToken> findByContentTopicName(String topicName);
+    
+    /**
+     * 활성 토픽의 계정들만 조회
+     */
+    @Query("SELECT m FROM MetaToken m WHERE m.contentTopic.isActive = true")
+    List<MetaToken> findByActiveContentTopic();
 }

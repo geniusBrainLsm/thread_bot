@@ -25,6 +25,7 @@ public class ThreadsPostService {
     private final Gpt4Service gpt4Service;
     private final WebClient.Builder webClientBuilder;
     private final MetaTokenRepository metaTokenRepository;
+    private final TopicBasedContentGenerationService contentGenerationService;
 
     private final String THREADS_API_BASE_URL = "https://graph.threads.net/v1.0";
 
@@ -59,7 +60,7 @@ public class ThreadsPostService {
 
 
 
-    private Mono<JsonNode> doPost(String text, String userId, String accessToken) {
+    public  Mono<JsonNode> doPost(String text, String userId, String accessToken) {
         WebClient client = webClientBuilder.baseUrl(THREADS_API_BASE_URL).build();
 
         Map<String, Object> body = new HashMap<>();
@@ -134,8 +135,70 @@ public class ThreadsPostService {
 
 
 
+    public boolean postToAllAccounts(String content) {
+        try {
+            List<MetaToken> accounts = metaTokenRepository.findAll();
+            if (accounts.isEmpty()) {
+                System.out.println("❌ 게시할 계정이 없습니다.");
+                return false;
+            }
 
+            List<Boolean> results = Flux.fromIterable(accounts)
+                    .flatMap(account -> 
+                        doPost(content, account.getUserId(), account.getAccessToken())
+                                .map(response -> true)
+                                .onErrorReturn(false)
+                    )
+                    .collectList()
+                    .block();
 
+            boolean allSuccess = results != null && results.stream().allMatch(success -> success);
+            System.out.println(allSuccess ? 
+                "✅ 모든 계정에 MCP 콘텐츠 게시 성공" : 
+                "❌ 일부 계정에서 MCP 콘텐츠 게시 실패");
 
+            return allSuccess;
+        } catch (Exception e) {
+            System.err.println("❌ MCP 콘텐츠 게시 중 오류: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    public boolean postArticleToAllAccounts(com.lsm.idea_print.dto.NewsArticle article) {
+        try {
+            List<MetaToken> accounts = metaTokenRepository.findAll();
+            if (accounts.isEmpty()) {
+                System.out.println("❌ 게시할 계정이 없습니다.");
+                return false;
+            }
 
+            List<Boolean> results = Flux.fromIterable(accounts)
+                    .flatMap(account -> {
+                        // Generate account-specific content
+                        String accountSpecificContent = contentGenerationService
+                                .generateThreadsPostForAccount(article, account.getUserId());
+                        
+                        return doPost(accountSpecificContent, account.getUserId(), account.getAccessToken())
+                                .map(response -> {
+                                    // Increment post count for successful posts
+                                    account.incrementPostCount();
+                                    metaTokenRepository.save(account);
+                                    return true;
+                                })
+                                .onErrorReturn(false);
+                    })
+                    .collectList()
+                    .block();
+
+            boolean allSuccess = results != null && results.stream().allMatch(success -> success);
+            System.out.println(allSuccess ? 
+                "✅ 모든 계정에 개인화된 MCP 콘텐츠 게시 성공" : 
+                "❌ 일부 계정에서 개인화된 MCP 콘텐츠 게시 실패");
+
+            return allSuccess;
+        } catch (Exception e) {
+            System.err.println("❌ 개인화된 MCP 콘텐츠 게시 중 오류: " + e.getMessage());
+            return false;
+        }
+    }
 }

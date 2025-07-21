@@ -15,36 +15,48 @@ import java.util.List;
 public class ScheduleService {
     private final ThreadsPostService threadsPostService;
     private final MetaTokenRepository metaTokenRepository;
-    private final SeuhariService seuhariService;
-    @Scheduled(cron = "0 0 */6 * * *") // 매일 6시간마다 실행
-    public void performDailyShariForCommenters() {
-        List<MetaToken> accounts = metaTokenRepository.findAll();
+    private final McpService mcpService;
+    private final MultiTopicMcpService multiTopicMcpService;
 
-        Flux.fromIterable(accounts)
-                .flatMap(account -> seuhariService.performShariForAccount(account.getUserId(), account.getAccessToken()))
-                .collectList()
-                .doOnNext(results -> {
-                    long successCount = results.stream().filter(result -> result.contains("성공")).count();
-                    System.out.println("\u2705 스하리 스케줄 완료 - 성공: " + successCount + " / 전체: " + results.size());
-                })
-                .subscribe();
+
+    @Scheduled(cron = "0 0 9 * * *") // 매일 오전 9시 실행 - MCP Pipeline (Single Source)
+    public void executeMcpPipeline() {
+        mcpService.executeFullPipeline();
     }
-
-    @Scheduled(cron = "0 0 */6 * * *") // 매일 6시간마다 실행
-    public void performDailyAutoReply() {
-        List<MetaToken> accounts = metaTokenRepository.findAll();
-
-        Flux.fromIterable(accounts)
-                .flatMap(account -> seuhariService.autoReplyToComments(account.getUserId(), account.getAccessToken()))
-                .collectList()
-                .doOnNext(results -> {
-                    long successCount = results.stream().filter(result -> result.contains("성공")).count();
-                    System.out.println("✅ 자동 답글 스케줄 완료 - 성공: " + successCount + " / 전체: " + results.size());
-                })
-                .subscribe();
+    
+    @Scheduled(cron = "0 0 12 * * *") // 매일 정오 12시 실행 - MCP Pipeline (All Sources)
+    public void executeMcpPipelineAllSources() {
+        mcpService.executeFullPipelineForAllSources();
     }
+    
+    @Scheduled(cron = "0 30 10 * * *") // 매일 오전 10시 30분 - Multi-Topic Pipeline
+    public void executeMultiTopicPipeline() {
+        multiTopicMcpService.executeFullPipelineForAllTopics();
+    }
+    
+    @Scheduled(cron = "0 0 14 * * *") // 매일 오후 2시 - Cross-Topic Pipeline
+    public void executeCrossTopicPipeline() {
+        multiTopicMcpService.executeCrossTopicPipeline();
+    }
+    
+    @Scheduled(cron = "0 0 16 * * *") // 매일 오후 4시 - Universal Pipeline
+    public void executeUniversalPipeline() {
+        multiTopicMcpService.executeUniversalPipeline();
+    }
+    
+    // AI-specific pipeline
+    @Scheduled(cron = "0 0 11 * * *") // 매일 오전 11시 - AI Topic Pipeline
+    public void executeAiTopicPipeline() {
+        multiTopicMcpService.executeTopicPipeline("ai");
+    }
+    
+    // Future life-hacks pipeline (currently commented out as no life-hacks sources exist yet)
+    // @Scheduled(cron = "0 0 15 * * *") // 매일 오후 3시 - Life Hacks Topic Pipeline
+    // public void executeLifeHacksTopicPipeline() {
+    //     multiTopicMcpService.executeTopicPipeline("life-hacks");
+    // }
 
-    @Scheduled(cron = "0 0 */3 * * *") // 매일 3시간마다 실행 (0시, 3시, 6시
+    @Scheduled(cron = "0 0 */3 * * *") // 매일 3시간마다 실행 (0시, 3시, 6시) - Legacy posting
     public void postDailyGptContent() {
         threadsPostService.postDailyContentForAllAccounts()
                 .doOnNext(response -> {
