@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+  data:
+    redis:
+      host: localhost
+      port: 6370  # Use different port to avoid conflicts
+  ai:
+    openai:
+      api-key: test-api-key
+      
+meta:
+  app-id: test-app-id
+  app-secret: test-app-secret
+
+mcp:
+  slack:
+    webhook-url: http://localhost:3000/test-webhook
